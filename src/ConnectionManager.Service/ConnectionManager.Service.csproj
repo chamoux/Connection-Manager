@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ConnectionManager.Service</AssemblyName>
+    <RootNamespace>ConnectionManager.Service</RootNamespace>
+    <!-- Runs as SYSTEM: ignore DOTNET_STARTUP_HOOKS, so an environment variable cannot load code into it. -->
+    <StartupHookSupport>false</StartupHookSupport>
+    <!-- JSON goes through source-generated contexts only (IpcJson, SettingsJson): no reflection, trim-safe. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConnectionManager.Core\ConnectionManager.Core.csproj" />
+  </ItemGroup>
+
+</Project>

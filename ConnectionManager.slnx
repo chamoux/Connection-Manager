@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ConnectionManager.Core/ConnectionManager.Core.csproj" />
+    <Project Path="src/ConnectionManager.Service/ConnectionManager.Service.csproj" />
+    <Project Path="src/ConnectionManager.Tray/ConnectionManager.Tray.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ConnectionManager.Core.Tests/ConnectionManager.Core.Tests.csproj" />
+    <Project Path="tests/ConnectionManager.Integration.Tests/ConnectionManager.Integration.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ConnectionManager.IpcProbe/ConnectionManager.IpcProbe.csproj" />
+    <Project Path="tools/ConnectionManager.WfpProbe/ConnectionManager.WfpProbe.csproj" />
+  </Folder>
+</Solution>

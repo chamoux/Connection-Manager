@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* Design tokens. Dark is the default; the light values follow under prefers-color-scheme.
+   Every text color meets 4.5:1 on canvas, surface and raised in both themes. */
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --color-canvas: #0e1218;
+  --color-surface: #151b23;
+  --color-raised: #1c2430;
+  --color-raised-hover: #243042;
+  --color-line: #29323f;
+  --color-line-strong: #3b4656;
+
+  --color-ink: #e7ecf2;
+  --color-ink-muted: #a3afbc;
+  --color-ink-faint: #8693a1;
+
+  --color-accent: #5fb0ff;
+  --color-accent-hover: #86c3ff;
+  --color-on-accent: #07121d;
+  --color-focus: #8cc6ff;
+
+  --color-game: #3ddc84;
+  --color-saver: #b79cff;
+  --color-warn: #f5b94a;
+  --color-danger: #ff7b72;
+
+  --radius-card: 0.75rem;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --color-canvas: #f3f5f8;
+      --color-surface: #ffffff;
+      --color-raised: #eef1f5;
+      --color-raised-hover: #e2e7ee;
+      --color-line: #d7dde5;
+      --color-line-strong: #b4bfcc;
+
+      --color-ink: #111827;
+      --color-ink-muted: #4b5563;
+      --color-ink-faint: #5d6a79;
+
+      --color-accent: #0b63c5;
+      --color-accent-hover: #0952a6;
+      --color-on-accent: #ffffff;
+      --color-focus: #0b63c5;
+
+      --color-game: #13793b;
+      --color-saver: #6a4bd6;
+      --color-warn: #8f5407;
+      --color-danger: #c42b2b;
+    }
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-sm text-ink antialiased;
+    line-height: 1.5;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display text-ink;
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-focus;
+  }
+
+  ::selection {
+    @apply bg-accent/30;
+  }
+}
+
+@utility card {
+  @apply rounded-card border border-line bg-surface p-4;
+}
+
+@utility btn {
+  @apply inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line bg-raised px-3 text-sm font-medium whitespace-nowrap text-ink transition-colors duration-150 select-none hover:border-line-strong hover:bg-raised-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:bg-raised;
+}
+
+@utility btn-primary {
+  @apply btn border-transparent bg-accent text-on-accent hover:border-transparent hover:bg-accent-hover disabled:hover:border-transparent disabled:hover:bg-accent;
+}
+
+@utility btn-ghost {
+  @apply btn border-transparent bg-transparent text-ink-muted hover:border-transparent hover:bg-raised hover:text-ink disabled:hover:border-transparent disabled:hover:bg-transparent;
+}
+
+@utility btn-danger {
+  @apply btn border-danger/50 bg-transparent text-danger hover:border-danger hover:bg-danger/10 disabled:hover:border-danger/50 disabled:hover:bg-transparent;
+}
+
+/* Compact text button for table rows. */
+@utility btn-row {
+  @apply inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md px-2 text-sm font-medium whitespace-nowrap text-accent transition-colors duration-150 select-none hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-icon {
+  @apply btn-ghost h-8 w-8 px-0;
+}
+
+@utility field {
+  @apply h-8 rounded-md border border-line-strong bg-canvas px-2.5 text-sm text-ink placeholder:text-ink-faint focus-visible:border-accent aria-invalid:border-danger disabled:opacity-50;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-xs font-medium text-ink-muted;
+}
+
+@utility spinner {
+  @apply inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+}

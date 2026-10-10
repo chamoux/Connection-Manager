@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>ConnectionManager</AssemblyName>
+    <RootNamespace>ConnectionManager.Tray</RootNamespace>
+    <!-- Ignore DOTNET_STARTUP_HOOKS: nothing needs them, and an environment variable should not load code into the
+         tray, which may still be started elevated by hand. -->
+    <StartupHookSupport>false</StartupHookSupport>
+    <!-- JSON goes through source-generated contexts only (IpcJson, SettingsJson): no reflection, trim-safe. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- MSB3277 (WindowsBase): the WebView2 package always references its WPF control, which we never load. UseWPF would
+         silence it too, but it adds 54 MB of WPF to the self-contained publish and changes the implicit usings. -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ConnectionManager.Core\ConnectionManager.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+
+  <!-- The settings UI: web/dist (pnpm build in web/) goes to ui\ next to the exe. Without a build the glob matches
+       nothing and the window says so. -->
+  <ItemGroup>
+    <Content Include="..\..\web\dist\**\*" LinkBase="ui" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

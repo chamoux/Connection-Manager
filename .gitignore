@@ -1,0 +1,34 @@
+# .NET build output
+bin/
+obj/
+publish/
+artifacts/
+TestResults/
+*.trx
+coverage*/
+*.binlog
+
+# Web UI (pnpm): dependencies and the build output, which the tray csproj copies into ui/
+node_modules/
+web/dist/
+package-lock.json
+yarn.lock
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Secrets: .env and every variant (.env.local, .env.bak-x, ...). Only the example is committed.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+desktop.ini
