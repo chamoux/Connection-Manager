@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 
 namespace ConnectionManager.Integration.Tests;
 
@@ -30,13 +31,31 @@ internal sealed class CurlCopy : IDisposable
         return -1;
     }
 
+    /// Whether curl's connection was let through, which is what a WFP filter decides: a block fails the connect at once
+    /// (exit 7). Not whether the page then downloads: an antivirus that decrypts HTTPS (Kaspersky on the dev VM, whose
+    /// certificate curl sees) fetches the page itself and sometimes stalls after the connect, which says nothing about
+    /// our filters.
+    public bool Connects(string url = InternetUrl)
+    {
+        var start = new ProcessStartInfo(ExePath) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+        foreach (var arg in new[] { "-s", "-o", "NUL", "--max-time", "10", "-w", "%{time_connect}", url }) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(20_000))
+        {
+            process.Kill(); // a hung curl would keep holding the copied exe
+            return false;
+        }
+        return double.TryParse(output.Result.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) && seconds > 0;
+    }
+
     /// Retries for a while: the engine may need a moment to drop a dead session's filters.
-    public bool FetchesWithin(TimeSpan timeout)
+    public bool ConnectsWithin(TimeSpan timeout)
     {
         var until = DateTime.UtcNow + timeout;
         while (true)
         {
-            if (Fetch() == 0) return true;
+            if (Connects()) return true;
             if (DateTime.UtcNow > until) return false;
             Thread.Sleep(1000);
         }

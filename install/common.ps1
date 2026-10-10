@@ -12,6 +12,8 @@ $DataFolderSddl = "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)
 # Adding, changing or deleting anything inside, or changing who may. Inherited entries can hold the generic GENERIC_ALL
 # and GENERIC_WRITE bits instead of the specific ones.
 $WriteRights = 0x500D0156
+# The Apps & Features entry, in the 64-bit registry: install and uninstall refuse to run in 32-bit PowerShell.
+$UninstallKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ConnectionManager"
 
 # A machine folder from its admin-only registry value, never from the environment: a user can override %ProgramData%
 # (and the known folders built on it, such as the Start menu's), and the override reaches an elevated run. Only
@@ -114,11 +116,44 @@ function New-LockedFolder([string]$Path, [string]$Sddl) {
     if ($problem -or (Get-ChildItem -LiteralPath $Path -Force)) { throw $taken }
 }
 
-# Copies the folder $From into $To without junctions or symbolic links (robocopy /XJ). Copy-Item -Recurse would copy what
-# a link points to, and this runs elevated. robocopy's exit codes below 8 mean success.
-function Copy-Tree([string]$From, [string]$To) {
+# Ends these processes and waits until Windows has removed them; returns any still there after the timeout. Stop-Process
+# returns, and so does Wait-Process, while a killed process is still being torn down, so a check straight after would
+# still see it (a killed tray took about a second on the dev VM).
+function Stop-ProcessAndWait([int[]]$Id, [int]$TimeoutSeconds = 15) {
+    if (-not $Id) { return @() }
+    Stop-Process -Id $Id -Force -ErrorAction SilentlyContinue
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ($true) {
+        $left = @(Get-Process -Id $Id -ErrorAction SilentlyContinue)
+        if (-not $left -or [DateTime]::UtcNow -ge $deadline) { return $left }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
+
+# Copies the folder $From into $To without junctions or symbolic links (robocopy /XJ), or with $Files only those files
+# directly in it. Copy-Item -Recurse would copy what a link points to, and this runs elevated. robocopy's exit codes below
+# 8 mean success; a file it skips (missing, or a link) is not an error, so check for what you need.
+function Copy-Tree([string]$From, [string]$To, [string[]]$Files = @()) {
     $robocopy = Join-Path ([Environment]::GetFolderPath("System")) "robocopy.exe"
     $ErrorActionPreference = "Continue"
-    $output = @(& $robocopy $From $To /E /XJ /R:1 /W:1 /NP /NFL /NDL /NJH 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    [string[]]$what = if ($Files) { $Files } else { "/E" }   # an array: splatting a lone string passes it a character at a time
+    $output = @(& $robocopy $From $To @what /XJ /R:1 /W:1 /NP /NFL /NDL /NJH 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
     if ($LASTEXITCODE -ge 8) { throw "robocopy could not copy $From to $To (exit $LASTEXITCODE): $($output -join ' ')" }
+}
+
+# What the Uninstall button in Apps & Features runs, without admin rights: a hidden PowerShell that asks for them and runs
+# $InstallDir\setup\uninstall.ps1 in an admin window, which stays open until you press Enter. Both commands are
+# -EncodedCommand (base64 of UTF-16LE), so no quote or space in a path changes on the way, and Windows PowerShell's
+# Start-Process, which joins its arguments with spaces, cannot split them. Paths are quoted with their single quotes
+# doubled, typographic ones included. The admin PowerShell loads modules only from the admin-only module folders.
+function Get-UninstallCommand([string]$InstallDir, [string]$ProgramFiles) {
+    function Quote([string]$Text) { "'" + [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($Text) + "'" }
+    function Encode([string]$Command) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command)) }
+    $system = [Environment]::GetFolderPath("System")
+    $powershell = Join-Path $system "WindowsPowerShell\v1.0\powershell.exe"
+    $modules = (Join-Path $system "WindowsPowerShell\v1.0\Modules") + ";" + (Join-Path $ProgramFiles "WindowsPowerShell\Modules")
+    $inner = "`$env:PSModulePath = $(Quote $modules); try { & $(Quote (Join-Path $InstallDir "setup\uninstall.ps1")) } catch { Write-Host `$_ -ForegroundColor Red }; Read-Host 'Press Enter to close'"
+    $outer = "Start-Process -FilePath $(Quote $powershell) -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','$(Encode $inner)'"
+    "`"$powershell`" -NoProfile -WindowStyle Hidden -EncodedCommand $(Encode $outer)"
 }

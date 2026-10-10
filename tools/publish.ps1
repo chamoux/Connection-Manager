@@ -1,7 +1,8 @@
-# Builds a self-contained release (the service and the tray share one app\ folder) and zips it with the installer,
-# ready to copy to the gaming PC. Also builds IpcProbe into artifacts\IpcProbe for tools\smoke.ps1; it is not shipped.
+# Builds a self-contained release (the service and the tray share one app\ folder) and zips it with the installer.
+# Then it builds artifacts\ConnectionManagerSetup-<version>.exe, one native exe with the zip inside: the file to copy to
+# the gaming PC. Also builds IpcProbe into artifacts\IpcProbe for tools\smoke.ps1; it is not shipped.
 # Run it without admin rights: it starts the merged tray to test it, and the tray must never run elevated.
-param([string]$Version = "0.1.0")
+param([string]$Version = "1.0.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root "artifacts\ConnectionManager"
@@ -9,6 +10,8 @@ $app = Join-Path $out "app"
 $staging = Join-Path $root "artifacts\staging"
 $probe = Join-Path $root "artifacts\IpcProbe"
 $zip = Join-Path $root "artifacts\ConnectionManager-$Version.zip"
+$setupBuild = Join-Path $root "artifacts\setup"
+$setup = Join-Path $root "artifacts\ConnectionManagerSetup-$Version.exe"
 
 # Checked first, so a build is not wasted on a launch test that cannot run.
 if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -166,3 +169,25 @@ Get-ChildItem -LiteralPath (Join-Path $root "install") -File | Copy-Item -Destin
 Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
 Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $out).FullName -DestinationPath $zip
 Write-Host ("Created {0} ({1:N1} MB)" -f $zip, ((Get-Item -LiteralPath $zip).Length / 1MB))
+
+# The setup exe: the zip inside one NativeAOT exe, which needs the MSVC linker. The compiler finds it through
+# VsDevCmd.bat, which runs vswhere.exe by name from the Visual Studio Installer folder; with
+# NoDefaultCurrentDirectoryInExePath set, cmd only looks for it on PATH.
+$installer = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer"
+if (Test-Path -LiteralPath (Join-Path $installer "vswhere.exe")) { $env:PATH = "$installer;$env:PATH" }
+Remove-Item -LiteralPath $setupBuild, $setup -Recurse -Force -ErrorAction SilentlyContinue
+Invoke-Native "dotnet publish (Setup)" {
+    dotnet publish (Join-Path $root "tools\ConnectionManager.Setup\ConnectionManager.Setup.csproj") -c Release -r win-x64 `
+        --disable-build-servers -p:PayloadZip=$zip -p:Version=$Version -o $setupBuild
+}
+Copy-Item -LiteralPath (Join-Path $setupBuild "ConnectionManagerSetup.exe") $setup
+Remove-Item -LiteralPath $setupBuild -Recurse -Force
+
+# It must start and refuse a bad argument (exit 2) before it looks at anything else. This window has no admin rights,
+# so nothing is installed.
+$setupOutput = & {
+    $ErrorActionPreference = "Continue"
+    & $setup --bogus 2>&1 | ForEach-Object { "$_" }
+}
+if ($LASTEXITCODE -ne 2) { throw "The setup exe did not start and refuse a bad argument (exit $LASTEXITCODE, expected 2): $($setupOutput -join ' ')" }
+Write-Host ("Created {0} ({1:N1} MB), the file to copy to the gaming PC" -f $setup, ((Get-Item -LiteralPath $setup).Length / 1MB))

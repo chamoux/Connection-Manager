@@ -2,7 +2,8 @@
 # Installs or updates Connection Manager: the ConnectionManager service (LocalSystem), which does the blocking, and the
 # tray app, which starts without admin rights at every user's sign-in and controls the service. Replaces a Phase 1
 # install (an elevated tray started by a logon task). This script never starts the tray, so the tray never inherits
-# its admin rights: install.cmd starts it afterwards from its own, unelevated window.
+# its admin rights: ConnectionManagerSetup.exe or install.cmd starts it afterwards from its own, unelevated window.
+# It also registers the Apps & Features entry, which runs a copy of uninstall.ps1 kept in the install folder.
 $ErrorActionPreference = "Stop"
 $serviceName = "ConnectionManager"
 $legacyTask = "Connection Manager"   # Phase 1
@@ -14,7 +15,8 @@ if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProces
 # Folders from admin-only registry values, not $env:ProgramFiles / $env:ProgramData or the known folders built on them:
 # a user can override those, and they reach this elevated run.
 $programData = Get-MachineFolder "SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList" "ProgramData"
-$installDir = Join-Path (Get-MachineFolder "SOFTWARE\Microsoft\Windows\CurrentVersion" "ProgramFilesDir") "ConnectionManager"
+$programFiles = Get-MachineFolder "SOFTWARE\Microsoft\Windows\CurrentVersion" "ProgramFilesDir"
+$installDir = Join-Path $programFiles "ConnectionManager"
 $dataDir = Join-Path $programData "ConnectionManager"
 $startMenu = Get-MachineFolder "SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" "Common Programs" @{ ProgramData = $programData }
 $sc = Join-Path ([Environment]::GetFolderPath("System")) "sc.exe"
@@ -73,8 +75,10 @@ try {
     New-LockedFolder $stage "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)"
     $staged = $true
     Copy-Tree $source $stageApp
-    foreach ($file in "ConnectionManager.exe", "ConnectionManager.Service.exe") {
-        if (-not (Test-Path -LiteralPath (Join-Path $stageApp $file) -PathType Leaf)) { throw "app\$file was not found next to install.ps1" }
+    # The uninstaller and what it dot-sources, for Apps & Features, staged the same way.
+    Copy-Tree $PSScriptRoot $stage "uninstall.ps1", "common.ps1"
+    foreach ($file in "app\ConnectionManager.exe", "app\ConnectionManager.Service.exe", "uninstall.ps1", "common.ps1") {
+        if (-not (Test-Path -LiteralPath (Join-Path $stage $file) -PathType Leaf)) { throw "$file was not found next to install.ps1" }
     }
 
     # Settings and logs: admins and SYSTEM may write, users may only read. Any user can create folders in ProgramData, so
@@ -92,9 +96,7 @@ try {
     }
 
     # Every tray (Phase 1's elevated one, and each signed-in user's), so its files are free. Phase 1's WFP filters go with it.
-    Get-Process ConnectionManager -ErrorAction SilentlyContinue | Stop-Process -Force -PassThru -ErrorAction SilentlyContinue |
-        Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
-    $running = @(Get-Process ConnectionManager -ErrorAction SilentlyContinue)
+    $running = Stop-ProcessAndWait (Get-Process ConnectionManager -ErrorAction SilentlyContinue).Id
     if ($running) { throw "Connection Manager is still running (process $($running.Id -join ', ')). Close it from its tray icon, then run install again." }
 
     # The service removes its filters and restores what it changed when it stops.
@@ -129,6 +131,7 @@ try {
     Get-ChildItem -LiteralPath $installDir -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     if (Get-ChildItem -LiteralPath $installDir -Force) { throw "Some files in $installDir are in use. Restart the PC, then run install again." }
     Copy-Tree $stageApp $installDir
+    Copy-Tree $stage (Join-Path $installDir "setup") "uninstall.ps1", "common.ps1"
     # A downloaded zip marks its files as "from the internet". Without this, every start from the Start menu asks to confirm.
     Get-ChildItem -LiteralPath $installDir -Recurse -File | Unblock-File
 }
@@ -136,6 +139,19 @@ finally {
     # Only a folder made here: anything else at that path is not ours to delete.
     if ($staged) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
 }
+
+# Apps & Features, registered as soon as the files are in place, so it can also remove an install that fails below.
+# DisplayVersion leaves out the build's commit id (1.0.0+<commit>).
+$version = (Get-Item -LiteralPath $serviceExe).VersionInfo.ProductVersion -replace '\+.*$'
+$size = (Get-ChildItem -LiteralPath $installDir -Recurse -File -Force | Measure-Object Length -Sum).Sum
+New-Item -Path $UninstallKey -Force | Out-Null
+$entry = [ordered]@{
+    DisplayName = "Connection Manager"; DisplayVersion = $version; Publisher = "Connection Manager"; InstallLocation = $installDir
+    DisplayIcon = "$tray,0"; UninstallString = Get-UninstallCommand $installDir $programFiles
+}
+foreach ($name in $entry.Keys) { New-ItemProperty -LiteralPath $UninstallKey -Name $name -Value $entry[$name] -PropertyType String -Force | Out-Null }
+$numbers = [ordered]@{ EstimatedSize = [int][Math]::Ceiling($size / 1KB); NoModify = 1; NoRepair = 1 }
+foreach ($name in $numbers.Keys) { New-ItemProperty -LiteralPath $UninstallKey -Name $name -Value $numbers[$name] -PropertyType DWord -Force | Out-Null }
 
 # Where the service reports a problem it cannot write to its log (a data folder it does not trust).
 if (-not (Test-Path -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\$serviceName")) {

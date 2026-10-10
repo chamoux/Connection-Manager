@@ -9,6 +9,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>ConnectionManager</AssemblyName>
     <RootNamespace>ConnectionManager.Tray</RootNamespace>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
     <!-- Ignore DOTNET_STARTUP_HOOKS: nothing needs them, and an environment variable should not load code into the
          tray, which may still be started elevated by hand. -->
     <StartupHookSupport>false</StartupHookSupport>

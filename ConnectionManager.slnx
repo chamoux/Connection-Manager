@@ -7,9 +7,11 @@
   <Folder Name="/tests/">
     <Project Path="tests/ConnectionManager.Core.Tests/ConnectionManager.Core.Tests.csproj" />
     <Project Path="tests/ConnectionManager.Integration.Tests/ConnectionManager.Integration.Tests.csproj" />
+    <Project Path="tests/ConnectionManager.Setup.Tests/ConnectionManager.Setup.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/ConnectionManager.IpcProbe/ConnectionManager.IpcProbe.csproj" />
+    <Project Path="tools/ConnectionManager.Setup/ConnectionManager.Setup.csproj" />
     <Project Path="tools/ConnectionManager.WfpProbe/ConnectionManager.WfpProbe.csproj" />
   </Folder>
 </Solution>

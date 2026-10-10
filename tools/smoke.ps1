@@ -1,12 +1,17 @@
 #Requires -RunAsAdministrator
 # Dev-PC smoke test of the real install. Only SYSTEM can own the service's pipe, so the app must run as the installed
-# service: this installs artifacts\ConnectionManager (run tools\publish.ps1 first), then through IpcProbe:
+# service: this installs with artifacts\ConnectionManagerSetup-<version>.exe --unattended (run tools\publish.ps1 first),
+# checks the Apps & Features entry, then through IpcProbe:
 #   Game Mode on gives block filters; killing the service like a crash removes them; the service manager restarts it
 #   with Game Mode back on Auto; Data Saver on adds its block-all filter.
-# Then it uninstalls (settings kept) and puts settings.json back. It starts with default settings.
-# It refuses to run over an existing install unless you pass -Reinstall. Either way the app is NOT installed afterwards.
+# Then it uninstalls with the installed setup\uninstall.ps1 (settings kept) and puts settings.json back. It starts with
+# default settings. It refuses to run over an existing install unless you pass -Reinstall. Either way the app is NOT
+# installed afterwards.
 param(
     [string]$Package = (Join-Path $PSScriptRoot "..\artifacts\ConnectionManager"),
+    # The newest one tools\publish.ps1 made.
+    [string]$Setup = (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "..\artifacts") -Filter "ConnectionManagerSetup-*.exe" -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime | Select-Object -Last 1 -ExpandProperty FullName),
     [string]$Probe = (Join-Path $PSScriptRoot "..\artifacts\IpcProbe\ConnectionManager.IpcProbe.exe"),
     [switch]$Reinstall
 )
@@ -14,7 +19,8 @@ $ErrorActionPreference = "Stop"
 $serviceName = "ConnectionManager"
 $results = [ordered]@{}
 
-foreach ($file in (Join-Path $Package "install.ps1"), (Join-Path $Package "uninstall.ps1"), (Join-Path $Package "common.ps1"), (Join-Path $Package "app\ConnectionManager.Service.exe"), $Probe) {
+if (-not $Setup) { throw "artifacts\ConnectionManagerSetup-<version>.exe was not found. Run tools\publish.ps1 first." }
+foreach ($file in $Setup, (Join-Path $Package "uninstall.ps1"), (Join-Path $Package "common.ps1"), $Probe) {
     if (-not (Test-Path -LiteralPath $file)) { throw "$file was not found. Run tools\publish.ps1 first." }
 }
 . (Join-Path $Package "common.ps1")
@@ -25,12 +31,14 @@ $data = Join-Path (Get-MachineFolder "SOFTWARE\Microsoft\Windows NT\CurrentVersi
 $settings = Join-Path $data "settings.json"
 $backup = "$settings.smoke-backup"
 $dump = Join-Path $env:TEMP "cm-smoke-filters.xml"
+$uninstaller = Join-Path $installDir "setup\uninstall.ps1"
 $installed = @()
 if (Get-Service $serviceName -ErrorAction SilentlyContinue) { $installed += "the $serviceName service" }
 if (Test-Path -LiteralPath $installDir) { $installed += $installDir }
+if (Test-Path -LiteralPath $UninstallKey) { $installed += "its Apps & Features entry" }
 if (Get-ScheduledTask -TaskName "Connection Manager" -ErrorAction SilentlyContinue) { $installed += "the Phase 1 'Connection Manager' task" }
 if ($installed -and -not $Reinstall) {
-    throw "Connection Manager is installed on this PC ($($installed -join '; ')). The smoke test installs its own copy and uninstalls it at the end, so it would replace that install. Run it again with -Reinstall to allow that, then run install.cmd afterwards."
+    throw "Connection Manager is installed on this PC ($($installed -join '; ')). The smoke test installs its own copy and uninstalls it at the end, so it would replace that install. Run it again with -Reinstall to allow that, then run the setup exe again afterwards."
 }
 # A backup still here means an earlier run did not finish: it holds the real settings, so never overwrite it.
 if (Test-Path -LiteralPath $backup) { throw "$backup is left from an earlier smoke run. Rename it back to settings.json (or delete it), then run again." }
@@ -56,6 +64,18 @@ function Invoke-Probe([string[]]$Arguments) {
     $output = @(& $Probe @Arguments 2>&1 | ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) { throw "IpcProbe $Arguments failed (exit $LASTEXITCODE): $($output -join ' ')" }
     $output -join "`n"
+}
+
+# As a scripted install: this window is elevated, so setup installs here and never waits for a key.
+function Invoke-Setup {
+    $ErrorActionPreference = "Continue"
+    & $Setup --unattended 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) { throw "$Setup --unattended failed (exit $LASTEXITCODE)" }
+}
+
+# What a base64 -EncodedCommand argument runs (UTF-16LE), or null.
+function ConvertFrom-Encoded([string]$Command, [string]$Pattern) {
+    if ($Command -match $Pattern) { [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1])) }
 }
 
 # Our block filters, each with its number of conditions. Data Saver's block-all is the one with none.
@@ -85,7 +105,13 @@ function Get-ServiceInfo { Get-CimInstance Win32_Service -Filter "Name='$service
 $hadSettings = Test-Path -LiteralPath $settings
 if ($hadSettings) { Move-Item -LiteralPath $settings $backup }
 try {
-    & (Join-Path $Package "install.ps1")
+    Invoke-Setup
+
+    # Its UninstallString starts a hidden PowerShell, whose -EncodedCommand starts an admin one with another.
+    $outer = ConvertFrom-Encoded (Get-ItemProperty -LiteralPath $UninstallKey -ErrorAction SilentlyContinue).UninstallString '-EncodedCommand ([A-Za-z0-9+/=]+)$'
+    $inner = ConvertFrom-Encoded $outer "'-EncodedCommand','([A-Za-z0-9+/=]+)'"
+    $runs = "& '$([Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($uninstaller))'"
+    Check "Apps & Features entry: its UninstallString runs $uninstaller" ("$inner".Contains($runs) -and (Test-Path -LiteralPath $uninstaller -PathType Leaf))
 
     Invoke-Probe "set-game", "on" | Write-Host
     $blocks = 0
@@ -116,8 +142,12 @@ catch {
 }
 finally {
     try {
-        & (Join-Path $Package "uninstall.ps1")
+        # The one Apps & Features runs, without its admin prompt and Enter key. If the install did not get as far as
+        # copying it, the package's copy cleans up (and a check above has failed).
+        $uninstallWith = if (Test-Path -LiteralPath $uninstaller -PathType Leaf) { $uninstaller } else { Join-Path $Package "uninstall.ps1" }
+        & $uninstallWith
         Check "Uninstalled (the service is gone)" (-not (Get-Service $serviceName -ErrorAction SilentlyContinue))
+        Check "Uninstalled: the Apps & Features entry is gone" (-not (Test-Path -LiteralPath $UninstallKey))
     }
     catch { Check "Uninstalled ($($_.Exception.Message))" $false }
     # The service wrote its own settings.json; put the real one back.
@@ -125,5 +155,5 @@ finally {
     if ($hadSettings) { Move-Item -LiteralPath $backup $settings }
 }
 
-if ($installed) { Write-Warning "Connection Manager is no longer installed. Run install.cmd to install it again." }
+if ($installed) { Write-Warning "Connection Manager is no longer installed. Run $([IO.Path]::GetFileName($Setup)) to install it again." }
 if ($results.Count -gt 0 -and -not ($results.Values -contains $false)) { "SMOKE PASSED"; exit 0 } else { "SMOKE FAILED"; exit 1 }

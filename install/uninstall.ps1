@@ -1,7 +1,9 @@
 #Requires -RunAsAdministrator
-# Removes Connection Manager: the service, the tray app, its sign-in entry and Start menu shortcut, the event log source,
-# and a Phase 1 logon task if one is left. What the service changed in Windows (download caps, metered networks) is put
-# back first. Settings and logs stay unless you add -RemoveSettings.
+# Removes Connection Manager: the service, the tray app, its sign-in entry, Start menu shortcut and Apps & Features
+# entry, the event log source, and a Phase 1 logon task if one is left. What the service changed in Windows (download
+# caps, metered networks) is put back first. Settings and logs stay unless you add -RemoveSettings.
+# It runs from the extracted package or from the install folder's setup\ (Apps & Features), which it deletes: PowerShell
+# has read this script and common.ps1 by then, and nothing below reads a file next to it again.
 param([switch]$RemoveSettings)
 $ErrorActionPreference = "Stop"
 $serviceName = "ConnectionManager"
@@ -9,6 +11,8 @@ $legacyTask = "Connection Manager"   # Phase 1
 
 # A 32-bit PowerShell sees "Program Files (x86)" and the 32-bit registry, so it would miss the install.
 if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) { throw "Run uninstall from 64-bit PowerShell (double-click uninstall.cmd in Explorer)." }
+# Windows cannot delete a folder that is a process's current folder, and this one may be started in setup\.
+[Environment]::CurrentDirectory = [Environment]::SystemDirectory
 
 . (Join-Path $PSScriptRoot "common.ps1")
 # Folders from admin-only registry values, not $env:ProgramFiles / $env:ProgramData or the known folders built on them:
@@ -37,8 +41,8 @@ function Invoke-Sc([string]$Arguments, [int[]]$Allow = @()) {
 
 # Every tray (each signed-in user's, and Phase 1's elevated one), so its files can be deleted. Phase 1's WFP filters go with it.
 Stop-ScheduledTask -TaskName $legacyTask -ErrorAction SilentlyContinue
-Get-Process ConnectionManager -ErrorAction SilentlyContinue | Stop-Process -Force -PassThru -ErrorAction SilentlyContinue |
-    Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+$left = Stop-ProcessAndWait (Get-Process ConnectionManager -ErrorAction SilentlyContinue).Id
+if ($left) { Write-Warning "Connection Manager is still running (process $($left.Id -join ', ')); its files may not all be deleted." }
 Unregister-ScheduledTask -TaskName $legacyTask -Confirm:$false -ErrorAction SilentlyContinue
 
 # Stopping the service removes its filters and restores what it changed.
@@ -52,7 +56,7 @@ if ($service -and $service.Status -ne "Stopped") {
         Write-Warning "The $serviceName service did not stop within 30 seconds, so it is ended."
         Invoke-Sc "delete $serviceName" -Allow 1072
         $servicePid = (Get-CimInstance Win32_Service -Filter "Name='$serviceName'").ProcessId
-        if ($servicePid) { Stop-Process -Id $servicePid -Force -PassThru -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue }
+        if ($servicePid -and (Stop-ProcessAndWait $servicePid)) { Write-Warning "The service process $servicePid did not end." }
     }
 }
 
@@ -95,6 +99,8 @@ Remove-ItemProperty -LiteralPath $runKey -Name $serviceName -ErrorAction Silentl
 Remove-Item -LiteralPath $shortcut -Force -ErrorAction SilentlyContinue
 if (Test-Path -LiteralPath $eventSource) { [Diagnostics.EventLog]::DeleteEventSource($serviceName) }
 Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
+# Apps & Features runs the uninstaller kept in the install folder: while that is still there, keep its entry to run it again.
+if (-not (Test-Path -LiteralPath (Join-Path $installDir "setup\uninstall.ps1"))) { Remove-Item -LiteralPath $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue }
 if ($RemoveSettings) {
     # The journal is the only record of what is left to put back: keep it.
     if ($restored) { Remove-Item -LiteralPath $dataDir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -109,6 +115,7 @@ if (Test-Path -LiteralPath $installDir) { $left += $installDir }
 if (Get-ItemProperty -LiteralPath $runKey -Name $serviceName -ErrorAction SilentlyContinue) { $left += "the sign-in entry $runKey\$serviceName" }
 if (Test-Path -LiteralPath $shortcut) { $left += $shortcut }
 if (Test-Path -LiteralPath $eventSource) { $left += "the event log source $serviceName" }
+if (Test-Path -LiteralPath $UninstallKey) { $left += "the Apps & Features entry $UninstallKey" }
 if ($RemoveSettings -and $restored -and (Test-Path -LiteralPath $dataDir)) { $left += $dataDir }
 if ($left) { Write-Warning "Not everything could be removed: $($left -join '; '). Restart the PC and run uninstall again." }
 elseif ($restored) { Write-Host "Connection Manager is removed." }

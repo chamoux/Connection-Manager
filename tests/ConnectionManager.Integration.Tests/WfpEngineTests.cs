@@ -26,8 +26,8 @@ public sealed class WfpEngineTests : IDisposable
         NetworkSnapshot.None, new SystemProcessSource().GetRunning(), ControllerStatus.Starting, SaverActive: true, SteamPath: null,
         SteamLibraries: [], IsProtected: _ => false, ServiceExe: null))];
 
-    // An antivirus that fetches for curl may need a few tries before its own connection recovers from a block.
-    private static readonly TimeSpan Recovery = TimeSpan.FromSeconds(30);
+    // How long a lifted block may take to show.
+    private static readonly TimeSpan Recovery = TimeSpan.FromSeconds(15);
 
     private static void AddAll(WfpEngine engine, params FilterRule[] rules) =>
         engine.InTransaction(() => { foreach (var rule in rules) engine.Add(rule); });
@@ -35,13 +35,13 @@ public sealed class WfpEngineTests : IDisposable
     [ElevatedFact]
     public void Blocks_an_app_until_the_engine_is_disposed()
     {
-        Assert.Equal(0, _curl.Fetch());
+        Assert.True(_curl.Connects());
         using (var engine = new WfpEngine("cm-test"))
         {
             engine.InTransaction(() => engine.Add(CurlBlock));
             Assert.Equal(7, _curl.Fetch());
         }
-        Assert.True(_curl.FetchesWithin(Recovery));
+        Assert.True(_curl.ConnectsWithin(Recovery));
     }
 
     [ElevatedFact]
@@ -55,7 +55,7 @@ public sealed class WfpEngineTests : IDisposable
 
         engine.InTransaction(() => { foreach (var id in ids) engine.DeleteFilter(id); });
 
-        Assert.True(_curl.FetchesWithin(Recovery));
+        Assert.True(_curl.ConnectsWithin(Recovery));
     }
 
     [ElevatedFact]
@@ -103,7 +103,7 @@ public sealed class WfpEngineTests : IDisposable
     [ElevatedFact]
     public void Block_all_cuts_off_an_app()
     {
-        Assert.Equal(0, _curl.Fetch());
+        Assert.True(_curl.Connects());
         using var engine = new WfpEngine("cm-test");
 
         Saver(new FilterReconciler(engine));
@@ -121,7 +121,7 @@ public sealed class WfpEngineTests : IDisposable
 
         Saver(filters, CurlPermit);
 
-        Assert.True(_curl.FetchesWithin(Recovery));
+        Assert.True(_curl.ConnectsWithin(Recovery));
     }
 
     [ElevatedFact]
@@ -130,7 +130,7 @@ public sealed class WfpEngineTests : IDisposable
         using var engine = new WfpEngine("cm-test");
         var filters = new FilterReconciler(engine);
         Saver(filters, CurlPermit);
-        Assert.True(_curl.FetchesWithin(Recovery));
+        Assert.True(_curl.ConnectsWithin(Recovery));
 
         Saver(filters, CurlPermit, CurlBlock);
 

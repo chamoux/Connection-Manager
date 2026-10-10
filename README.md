@@ -30,12 +30,15 @@ They talk over a locked-down local pipe. Only programs in an active, signed-in s
 
 ## Install on the gaming PC
 
-1. On the dev PC, run `powershell -ExecutionPolicy Bypass -File tools\publish.ps1`. It builds the settings window, publishes the service and the tray app into one folder, and creates `artifacts\ConnectionManager-0.1.0.zip`.
-2. Copy the zip to the gaming PC, right-click it and choose **Extract All**. Don't run anything from inside the zip. Keep the extracted folder: you need `uninstall.cmd` from it later.
-3. Double-click `install.cmd` and approve the admin prompt. An admin window shows the install; press a key to close it when it's done. It replaces a Phase 1 install by itself.
-4. The tray icon appears; it may be under the ^ arrow. Hover over it to see the status.
+1. On the dev PC, run `powershell -ExecutionPolicy Bypass -File tools\publish.ps1`. It builds everything and creates `artifacts\ConnectionManagerSetup-1.0.0.exe`.
+2. Copy `artifacts\ConnectionManagerSetup-1.0.0.exe` to the gaming PC (USB stick, cloud drive, or drag it out of this VM) and double-click it. Approve the admin prompt.
+   - If the file came through a browser or cloud drive, Windows may say "Windows protected your PC", because the file isn't code-signed. Choose **More info** → **Run anyway**.
+   - An admin window shows the install and closes by itself when it's done. It replaces an older version or a Phase 1 install by itself.
+3. The first window starts the tray app and says so; press Enter to close it. The tray icon may be under the ^ arrow. Hover over it to see the status.
 
-If you run `install.cmd` from an admin prompt, it can't start the tray without admin rights. Start the tray from **Connection Manager** in the Start menu, or sign out and back in.
+If you start the setup exe with **Run as administrator**, it can't start the tray without admin rights. Start the tray from **Connection Manager** in the Start menu, or sign out and back in.
+
+**Advanced:** publish still creates `artifacts\ConnectionManager-1.0.0.zip`, the same app with the install scripts: extract it and double-click `install.cmd`. Scripts can install from an admin prompt with `ConnectionManagerSetup-1.0.0.exe --unattended`, which never waits for a key.
 
 ## Use
 
@@ -139,27 +142,29 @@ It uses no memory once you close it.
 
 ## Uninstall
 
-In the extracted folder, double-click `uninstall.cmd` and approve the admin prompt. It first puts back what Connection Manager changed in Windows (download caps, metered networks, upload caps), then removes the service, the tray app and its sign-in entry. It keeps your settings and logs.
+Open **Settings → Apps → Installed apps**, choose **Connection Manager → Uninstall**, and approve the admin prompt. An admin window first puts back what Connection Manager changed in Windows (download caps, metered networks, upload caps), then removes the service, the tray app and its sign-in entry. It keeps your settings and logs. Press Enter to close it.
 
-To remove those too:
+To remove settings and logs too:
 1. Open PowerShell as administrator.
-2. Go to the extracted folder: `cd "<path to the folder>"`.
-3. Run `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -RemoveSettings`.
+2. Run `powershell -ExecutionPolicy Bypass -File "C:\Program Files\ConnectionManager\setup\uninstall.ps1" -RemoveSettings`.
 
 If something could not be put back, the settings folder stays, because it lists what is left. The uninstaller says so.
+
+If you installed from the zip, `uninstall.cmd` in the extracted folder works too.
 
 ## Develop
 
 - Build: `dotnet build ConnectionManager.slnx`
-- Unit tests: `dotnet test tests/ConnectionManager.Core.Tests`
+- Unit tests: `dotnet test tests/ConnectionManager.Core.Tests` and `dotnet test tests/ConnectionManager.Setup.Tests`
 - Settings UI: in `web\`, run `pnpm install`, then `pnpm dev`, which uses sample data in a browser. Run tests with `pnpm test`.
 - Admin tests: real WFP filters against a copy of curl, plus the pipe, Delivery Optimization caps, the traffic meter and QoS.
   `powershell -ExecutionPolicy Bypass -File tools\run-elevated.ps1 -Command "dotnet test tests\ConnectionManager.Integration.Tests"`
-- Release: `powershell -ExecutionPolicy Bypass -File tools\publish.ps1`.
+- Release: `powershell -ExecutionPolicy Bypass -File tools\publish.ps1` (version 1.0.0 unless you add `-Version`).
   - It runs `pnpm install --frozen-lockfile` and `pnpm build` in `web\`, publishes the service and the tray into `artifacts\ConnectionManager\app`, and zips them with the installer.
+  - It then makes the setup exe, `artifacts\ConnectionManagerSetup-<version>.exe`: the zip inside one native (NativeAOT) exe. That needs Visual Studio Build Tools with the C++ workload.
   - It also builds `artifacts\IpcProbe`, a small command-line client of the installed service, for the smoke test. It isn't shipped.
     `ConnectionManager.IpcProbe status | set-game auto|on|off | set-saver auto|on|off`
 - Smoke test of the real install. Run the release step first.
-  - It installs the service from `artifacts\ConnectionManager`, checks the Game Mode and Data Saver filters, and kills the service to check that its filters go and that it restarts. Then it uninstalls, keeping settings.
-  - It refuses to run over an existing install. Add `-Reinstall` to allow that, then run `install.cmd` again afterwards.
+  - It installs with the setup exe (`--unattended`) and checks the Apps & Features entry. It checks the Game Mode and Data Saver filters, and kills the service to check that its filters go and that it restarts. Then it uninstalls with the installed uninstaller, keeping settings.
+  - It refuses to run over an existing install. Add `-Reinstall` to allow that, then run the setup exe again afterwards.
   `powershell -ExecutionPolicy Bypass -File tools\run-elevated.ps1 -Command "& .\tools\smoke.ps1"`

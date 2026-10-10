@@ -27,7 +27,7 @@ public sealed class CrashSafetyTests : IDisposable
             probe.WaitForExit(10_000);
         }
 
-        Assert.True(_curl.FetchesWithin(TimeSpan.FromSeconds(15)));
+        Assert.True(_curl.ConnectsWithin(TimeSpan.FromSeconds(15)));
     }
 
     public void Dispose() => _curl.Dispose();
