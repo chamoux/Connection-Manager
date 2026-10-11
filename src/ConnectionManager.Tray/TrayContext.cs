@@ -5,6 +5,7 @@ using ConnectionManager.Core.Ipc;
 using ConnectionManager.Core.Logging;
 using ConnectionManager.Core.Modes;
 using ConnectionManager.Core.Settings;
+using ConnectionManager.Core.Tray;
 
 namespace ConnectionManager.Tray;
 
@@ -40,19 +41,24 @@ internal sealed class TrayContext : ApplicationContext, ITrayCommands, ISettings
     private string? _hotkeyText;
     private bool _menuDirty = true;
     private SettingsWindow? _settings;
+    private OpenRequests? _openRequests;
     private bool _lastBalloonOpensReports;
     private int _openDialogs;
     private bool _exitAfterDialogs;
     private bool _exiting;
 
-    public TrayContext(ILog log, string ownLogFolder)
+    public TrayContext(ILog log, string ownLogFolder, string openEvent, bool openWindow)
     {
         _log = log;
         _ownLogFolder = ownLogFolder;
         try
         {
             _tray = new NotifyIcon { Icon = _icons[TrayIconKind.Disconnected], Text = TrayView.NotRunning, Visible = true };
-            _tray.DoubleClick += (_, _) => ToggleGameMode();
+            // A click opens the app; right-click shows the quick menu. Game Mode is toggled by the hotkey or the menu.
+            _tray.MouseClick += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left) OpenSettings();
+            };
             _tray.BalloonTipClicked += (_, _) =>
             {
                 if (_lastBalloonOpensReports) ShowSettings(ReportsTab);
@@ -65,6 +71,15 @@ internal sealed class TrayContext : ApplicationContext, ITrayCommands, ISettings
             _detector = new FullscreenDetector(game => RequestAsync(Command.ReportFullscreenGame, game, stop, quiet: true), log);
             RebuildIfIdle();
             _ = Task.Run(() => SubscribeLoopAsync(stop));
+            try
+            {
+                _openRequests = new OpenRequests(openEvent, () => Post(OpenSettings)); // Connection Manager started again
+            }
+            catch (Exception ex) when (ex is WaitHandleCannotBeOpenedException or UnauthorizedAccessException or IOException)
+            {
+                log.Warn($"Starting Connection Manager again will not open its window: {ex.Message}");
+            }
+            if (openWindow) Post(OpenSettings); // once the message loop runs
         }
         catch
         {
@@ -541,6 +556,7 @@ internal sealed class TrayContext : ApplicationContext, ITrayCommands, ISettings
     private void Release()
     {
         _stop.Cancel(); // ends the subscribe loop and any command in flight
+        _openRequests?.Dispose();
         _detector?.Dispose(); // null when start-up failed before it existed
         _settings?.CloseNow(); // before the icon it uses is disposed; its WebView2 processes end with it
         _settings = null;

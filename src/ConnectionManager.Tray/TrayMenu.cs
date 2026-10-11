@@ -33,6 +33,8 @@ internal static class TrayMenu
     public static ContextMenuStrip BuildDisconnected(ITrayCommands commands)
     {
         var menu = new ContextMenuStrip();
+        menu.Items.Add(OpenItem(menu, commands)); // the window says the service is not running
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open log folder", null, (_, _) => commands.OpenLogFolder());
         menu.Items.Add("Exit", null, (_, _) => commands.Exit());
         return menu;
@@ -42,6 +44,8 @@ internal static class TrayMenu
     {
         var settings = status.Settings;
         var menu = new ContextMenuStrip();
+        menu.Items.Add(OpenItem(menu, commands));
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(Escape(TrayView.GameLine(status))) { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem(Escape(TrayView.SaverLine(status))) { Enabled = false });
         foreach (var problem in status.Problems.Take(3))
@@ -71,7 +75,6 @@ internal static class TrayMenu
         menu.Items.Add(AllowedMenu(settings, commands));
         menu.Items.Add(new ToolStripSeparator());
 
-        menu.Items.Add("Settings...", null, (_, _) => commands.OpenSettings());
         menu.Items.Add("Restore everything", null, (_, _) => commands.RestoreEverything());
         menu.Items.Add("Open log folder", null, (_, _) => commands.OpenLogFolder());
         menu.Items.Add("Exit", null, (_, _) => commands.Exit());
@@ -88,6 +91,10 @@ internal static class TrayMenu
             item.DropDownItems.Add(new ToolStripMenuItem(label, null, (_, _) => set(mode)) { Checked = current == mode });
         return item;
     }
+
+    // What a click on the icon does too, so it is in bold, the way Windows marks a menu's default item.
+    private static ToolStripMenuItem OpenItem(ContextMenuStrip menu, ITrayCommands commands) =>
+        new("Open Connection Manager", null, (_, _) => commands.OpenSettings()) { Font = new Font(menu.Font, FontStyle.Bold) };
 
     private static ToolStripMenuItem CatalogMenu(SettingsDto settings, ITrayCommands commands)
     {

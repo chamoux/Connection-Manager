@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using ConnectionManager.Core.Logging;
+using ConnectionManager.Core.Tray;
 using Microsoft.Win32.SafeHandles;
 
 // Native DLLs from System32 only. WebView2Loader.dll is not affected: the WebView2 package loads it itself.
@@ -12,9 +13,10 @@ internal static class Program
 {
     private const int TokenElevationType = 18;    // TOKEN_INFORMATION_CLASS
     private const int TokenElevationTypeFull = 2; // the elevated half of an admin's split token
+    private const uint AsfwAny = unchecked((uint)-1); // ASFW_ANY
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
 
@@ -33,12 +35,15 @@ internal static class Program
             return 1;
         }
 
+        var openWindow = TrayLaunch.OpensWindow(args);
         Mutex single;
         bool first;
+        string openEvent;
         try
         {
             // One tray per user per session: Local\ is per session, the SID tells users apart (runas).
             using var me = WindowsIdentity.GetCurrent();
+            openEvent = TrayLaunch.OpenEventName(me.User?.Value ?? "unknown");
             single = new Mutex(true, $@"Local\ConnectionManager.Tray.{me.User?.Value}", out first);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException)
@@ -53,12 +58,15 @@ internal static class Program
         {
             if (!first)
             {
-                log.Info("Already running; this copy exits");
+                // Started again from the Start menu: the user wants the window. This copy was started by the user, so it
+                // may hand the running one the right to come to the front.
+                if (openWindow) AllowSetForegroundWindow(AsfwAny);
+                log.Info(openWindow && OpenRequests.Send(openEvent) ? "Already running; asked it to open its window" : "Already running; this copy exits");
                 return 0;
             }
             try
             {
-                Application.Run(new TrayContext(log, logFolder));
+                Application.Run(new TrayContext(log, logFolder, openEvent, openWindow));
                 return 0;
             }
             catch (Exception ex)
@@ -92,4 +100,8 @@ internal static class Program
 
     private static void Fail(Exception ex) =>
         MessageBox.Show($"Connection Manager could not start: {ex.Message}", "Connection Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 }

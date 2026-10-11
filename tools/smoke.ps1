@@ -113,6 +113,10 @@ try {
     $runs = "& '$([Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($uninstaller))'"
     Check "Apps & Features entry: its UninstallString runs $uninstaller" ("$inner".Contains($runs) -and (Test-Path -LiteralPath $uninstaller -PathType Leaf))
 
+    # At sign-in only the tray icon appears; any other start opens the window.
+    $signIn = (Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name $serviceName -ErrorAction SilentlyContinue).$serviceName
+    Check "Sign-in entry starts the tray quietly: $signIn" ($signIn -eq "`"$(Join-Path $installDir 'ConnectionManager.exe')`" --background")
+
     Invoke-Probe "set-game", "on" | Write-Host
     $blocks = 0
     $null = Wait-Until { $script:blocks = @(Get-BlockFilters).Count; $script:blocks -gt 0 } 10

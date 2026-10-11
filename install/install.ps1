@@ -172,7 +172,8 @@ if ($config.PathName -ne "`"$serviceExe`"" -or $config.StartMode -ne "Auto" -or 
 }
 
 # Every user's tray starts at sign-in, without admin rights. The Start menu shortcut starts it by hand.
-New-ItemProperty -LiteralPath $runKey -Name $serviceName -Value "`"$tray`"" -PropertyType String -Force | Out-Null
+# --background: at sign-in only the tray icon appears. A start from the Start menu opens the window.
+New-ItemProperty -LiteralPath $runKey -Name $serviceName -Value "`"$tray`" --background" -PropertyType String -Force | Out-Null
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut((Join-Path $startMenu "Connection Manager.lnk"))
 $shortcut.TargetPath = $tray

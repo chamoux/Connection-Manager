@@ -34,13 +34,20 @@ They talk over a locked-down local pipe. Only programs in an active, signed-in s
 2. Copy `artifacts\ConnectionManagerSetup-1.0.0.exe` to the gaming PC (USB stick, cloud drive, or drag it out of this VM) and double-click it. Approve the admin prompt.
    - If the file came through a browser or cloud drive, Windows may say "Windows protected your PC", because the file isn't code-signed. Choose **More info** → **Run anyway**.
    - An admin window shows the install and closes by itself when it's done. It replaces an older version or a Phase 1 install by itself.
-3. The first window starts the tray app and says so; press Enter to close it. The tray icon may be under the ^ arrow. Hover over it to see the status.
+3. The first window starts the app and says so; press Enter to close it. The Connection Manager window opens, and its icon stays in the tray (it may be under the ^ arrow).
 
 If you start the setup exe with **Run as administrator**, it can't start the tray without admin rights. Start the tray from **Connection Manager** in the Start menu, or sign out and back in.
 
 **Advanced:** publish still creates `artifacts\ConnectionManager-1.0.0.zip`, the same app with the install scripts: extract it and double-click `install.cmd`. Scripts can install from an admin prompt with `ConnectionManagerSetup-1.0.0.exe --unattended`, which never waits for a key.
 
 ## Use
+
+**Open the app** in any of these ways:
+- click the tray icon (it may be under the ^ arrow);
+- right-click the tray icon and choose **Open Connection Manager**, the first item;
+- start **Connection Manager** from the Start menu. This also works while it is already running.
+
+At sign-in it starts quietly, with just the tray icon. Closing the window leaves it running in the tray.
 
 **Icon colours**
 
@@ -56,7 +63,7 @@ If you start the setup exe with **Run as administrator**, it can't start the tra
 
 **Game Mode**
 - **Auto (default):** on when a Steam game (or a full-screen game outside Steam) runs, and off 2 minutes after you quit.
-- **Manual:** double-click the icon, or press **Ctrl+Alt+G**, to force it on. Do it again to go back to Auto. A forced "On" goes back to Auto when the PC restarts.
+- **Manual:** press **Ctrl+Alt+G** (or right-click the icon → Game Mode) to force it on. Press it again to go back to Auto. A forced "On" goes back to Auto when the PC restarts.
 - **Never blocked**, even if you add them: Windows itself, Steam, your games, Discord, anti-cheat and your antivirus. Windows Update is the one exception: the built-in list pauses its download services (Windows Update, BITS and Delivery Optimization).
 - **On Wi-Fi**, Game Mode also pauses Windows' background Wi-Fi scans, which can cause ping spikes every minute.
 - **In Steam:** go to Settings → Downloads and turn off "Allow downloads during gameplay". Steam itself is never blocked.
@@ -77,7 +84,7 @@ If you start the setup exe with **Run as administrator**, it can't start the tra
 - **Choosing apps:** in the tray menu use **Allowed on hotspot → Add program**, or in Settings → Data Saver tick apps from the list of what used data in the last 24 hours.
 - **Mark this Wi-Fi as metered** (tray menu): tells Windows itself to hold back updates, OneDrive and Edge on that network.
 
-**Settings window** (tray → **Settings…**). Everything above, plus:
+**The window** (click the tray icon). Everything above, plus:
 - the usage list (what used data in the last 24 hours);
 - post-game reports, with one click to block an app during games;
 - upload caps;
